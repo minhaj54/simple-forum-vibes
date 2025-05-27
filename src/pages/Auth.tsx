@@ -47,7 +47,7 @@ const Auth = () => {
         });
         navigate('/');
       } else {
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email,
           password,
           options: {
@@ -60,10 +60,23 @@ const Auth = () => {
 
         if (error) throw error;
 
-        toast({
-          title: "Account created!",
-          description: "Please check your email to verify your account.",
-        });
+        // Check if email confirmation is required
+        if (data.user && !data.session) {
+          toast({
+            title: "Account created!",
+            description: "Please check your email to verify your account before signing in.",
+          });
+          // Switch to login mode after successful signup
+          setIsLogin(true);
+          setPassword(''); // Clear password for security
+        } else if (data.session) {
+          // User is automatically signed in (email confirmation disabled)
+          toast({
+            title: "Account created!",
+            description: "Welcome to the forum!",
+          });
+          navigate('/');
+        }
       }
     } catch (error: any) {
       toast({
