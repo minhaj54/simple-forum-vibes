@@ -1,12 +1,20 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
-import { LogOut, User } from 'lucide-react';
+import { LogOut, User, Plus } from 'lucide-react';
+import CreatePostDialog from '@/components/CreatePostDialog';
+import PostsList from '@/components/PostsList';
 
 const Index = () => {
   const { user, loading, signOut } = useAuth();
+  const [createPostOpen, setCreatePostOpen] = useState(false);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+  const handlePostCreated = () => {
+    setRefreshTrigger(prev => prev + 1);
+  };
 
   if (loading) {
     return (
@@ -59,18 +67,14 @@ const Index = () => {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+      <main className="max-w-2xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
         {user ? (
-          <div className="text-center">
-            <h2 className="text-3xl font-bold text-gray-900 mb-4">
-              Welcome to the Forum!
-            </h2>
-            <p className="text-lg text-gray-600 mb-8">
-              You're now authenticated and ready to participate in discussions.
-            </p>
-            <p className="text-gray-500">
-              Forum features (posts, comments, likes) will be implemented next!
-            </p>
+          <div>
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">Latest Posts</h2>
+              <p className="text-gray-600">Share your thoughts with the community</p>
+            </div>
+            <PostsList refreshTrigger={refreshTrigger} />
           </div>
         ) : (
           <div className="text-center">
@@ -86,6 +90,24 @@ const Index = () => {
           </div>
         )}
       </main>
+
+      {/* Floating Action Button */}
+      {user && (
+        <button
+          onClick={() => setCreatePostOpen(true)}
+          className="fixed bottom-6 right-6 bg-blue-600 hover:bg-blue-700 text-white rounded-full p-4 shadow-lg hover:shadow-xl transition-all duration-200 z-50"
+          aria-label="Create new post"
+        >
+          <Plus className="h-6 w-6" />
+        </button>
+      )}
+
+      {/* Create Post Dialog */}
+      <CreatePostDialog
+        open={createPostOpen}
+        onOpenChange={setCreatePostOpen}
+        onPostCreated={handlePostCreated}
+      />
     </div>
   );
 };
