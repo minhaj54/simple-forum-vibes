@@ -4,6 +4,8 @@ import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { LogOut, User, Plus } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 import CreatePostDialog from '@/components/CreatePostDialog';
 import PostsList from '@/components/PostsList';
 
@@ -11,6 +13,24 @@ const Index = () => {
   const { user, loading, signOut } = useAuth();
   const [createPostOpen, setCreatePostOpen] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+  // Fetch user profile to get username
+  const { data: profile } = useQuery({
+    queryKey: ['profile', user?.id],
+    queryFn: async () => {
+      if (!user?.id) return null;
+      
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('username, full_name')
+        .eq('id', user.id)
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user?.id,
+  });
 
   const handlePostCreated = () => {
     setRefreshTrigger(prev => prev + 1);
@@ -26,6 +46,8 @@ const Index = () => {
       </div>
     );
   }
+
+  const displayName = profile?.username || profile?.full_name || user?.email || 'User';
 
   return (
     <div className="min-h-screen bg-gray-100">
@@ -43,7 +65,7 @@ const Index = () => {
                   <div className="flex items-center space-x-2">
                     <User className="h-5 w-5 text-gray-600" />
                     <span className="text-sm text-gray-700">
-                      Welcome, {user.email}
+                      Welcome, {displayName}
                     </span>
                   </div>
                   <Button
