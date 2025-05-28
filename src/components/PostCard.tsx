@@ -1,10 +1,14 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { MessageCircle, Share } from 'lucide-react';
+import { MessageCircle, Share, Heart } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import CommentsSection from './CommentsSection';
 
 interface Post {
   id: string;
@@ -21,6 +25,9 @@ interface PostCardProps {
 
 const PostCard = ({ post }: PostCardProps) => {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const [showComments, setShowComments] = useState(false);
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -32,25 +39,111 @@ const PostCard = ({ post }: PostCardProps) => {
     });
   };
 
+  // Fetch likes count and user's like status
+  const { data: likesData } = useQuery({
+    queryKey: ['likes', post.id],
+    queryFn: async () => {
+      const { data: likes, error } = await supabase
+        .from('likes')
+        .select('id, user_id')
+        .eq('post_id', post.id);
+
+      if (error) throw error;
+
+      const likesCount = likes?.length || 0;
+      const userHasLiked = user ? likes?.some(like => like.user_id === user.id) : false;
+
+      return { likesCount, userHasLiked };
+    },
+  });
+
+  // Fetch comments count
+  const { data: commentsCount } = useQuery({
+    queryKey: ['comments-count', post.id],
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from('comments')
+        .select('*', { count: 'exact', head: true })
+        .eq('post_id', post.id);
+
+      if (error) throw error;
+      return count || 0;
+    },
+  });
+
+  // Like/unlike mutation
+  const likeMutation = useMutation({
+    mutationFn: async () => {
+      if (!user) throw new Error('User not authenticated');
+
+      if (likesData?.userHasLiked) {
+        // Unlike
+        const { error } = await supabase
+          .from('likes')
+          .delete()
+          .eq('post_id', post.id)
+          .eq('user_id', user.id);
+
+        if (error) throw error;
+      } else {
+        // Like
+        const { error } = await supabase
+          .from('likes')
+          .insert([{ post_id: post.id, user_id: user.id }]);
+
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['likes', post.id] });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: "Failed to update like status.",
+        variant: "destructive",
+      });
+      console.error('Like error:', error);
+    },
+  });
+
+  const handleLike = () => {
+    if (!user) {
+      toast({
+        title: "Authentication required",
+        description: "Please sign in to like posts.",
+        variant: "destructive",
+      });
+      return;
+    }
+    likeMutation.mutate();
+  };
+
   const handleComment = () => {
-    // TODO: Implement comment functionality
-    toast({
-      title: "Comments",
-      description: "Comment functionality coming soon!",
-    });
+    if (!user) {
+      toast({
+        title: "Authentication required",
+        description: "Please sign in to comment on posts.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setShowComments(!showComments);
   };
 
   const handleShare = async () => {
     try {
+      const shareUrl = `${window.location.origin}/?post=${post.id}`;
+      
       if (navigator.share) {
         await navigator.share({
           title: post.title,
           text: post.content || '',
-          url: window.location.href,
+          url: shareUrl,
         });
       } else {
         // Fallback: copy to clipboard
-        await navigator.clipboard.writeText(window.location.href);
+        await navigator.clipboard.writeText(shareUrl);
         toast({
           title: "Link copied!",
           description: "Post link has been copied to clipboard.",
@@ -97,11 +190,28 @@ const PostCard = ({ post }: PostCardProps) => {
           <Button
             variant="ghost"
             size="sm"
+            onClick={handleLike}
+            disabled={likeMutation.isPending}
+            className={`flex items-center space-x-1 ${
+              likesData?.userHasLiked 
+                ? 'text-red-600 hover:text-red-700' 
+                : 'text-gray-600 hover:text-red-600'
+            }`}
+          >
+            <Heart 
+              className={`h-4 w-4 ${likesData?.userHasLiked ? 'fill-current' : ''}`} 
+            />
+            <span>{likesData?.likesCount || 0}</span>
+          </Button>
+
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={handleComment}
             className="flex items-center space-x-1 text-gray-600 hover:text-blue-600"
           >
             <MessageCircle className="h-4 w-4" />
-            <span>Comment</span>
+            <span>{commentsCount || 0}</span>
           </Button>
           
           <Button
@@ -114,6 +224,13 @@ const PostCard = ({ post }: PostCardProps) => {
             <span>Share</span>
           </Button>
         </div>
+
+        {/* Comments section */}
+        {showComments && (
+          <div className="mt-4 pt-4 border-t border-gray-100">
+            <CommentsSection postId={post.id} />
+          </div>
+        )}
       </CardContent>
     </Card>
   );
